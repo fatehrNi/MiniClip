@@ -1,0 +1,20 @@
+# 跨平台换行策略：不依赖各人机器的 core.autocrlf 设置
+* text=auto
+
+# Windows 脚本必须是 CRLF：cmd.exe 对 LF 的 .cmd 处理不稳，PowerShell 5.1 也偏好 CRLF
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.ps1  text eol=crlf
+
+# 源码与文档统一 LF，diff 更干净
+*.cs   text eol=lf
+*.md   text eol=lf
+*.manifest text eol=lf
+.gitignore text eol=lf
+.gitattributes text eol=lf
+
+# 二进制
+*.ico  binary
+*.png  binary
+*.exe  binary
+*.zip  binary
