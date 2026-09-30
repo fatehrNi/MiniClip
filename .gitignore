@@ -1,0 +1,23 @@
+# 构建产物
+MiniClip.exe
+build/
+release/
+*.pdb
+
+# 运行数据（含用户复制过的内容，绝不入库）
+data/
+*.log
+
+# 测试输出
+tests/last-report.txt
+tests/last-soak.txt
+
+# 构建中间产物
+src/app.ico
+src/app.manifest
+
+# 编辑器 / 系统
+.vs/
+.idea/
+Thumbs.db
+Desktop.ini
