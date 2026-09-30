@@ -60,6 +60,7 @@ jobs:
   release:
     # 打 v* 标签就自动发 GitHub Release：构建 zip、算 SHA256、上传附件。
     # 用工作区自带的 GITHUB_TOKEN，不需要个人凭据，也不引入第三方 Action。
+    # 幂等：Release 已存在就更新说明、替换同名附件，所以重跑/重新打标都不会失败。
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: windows-latest
@@ -72,7 +73,7 @@ jobs:
         shell: pwsh
         run: ./release.ps1
 
-      - name: 创建 Release 并上传 zip
+      - name: 创建或更新 Release 并上传附件
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -80,6 +81,7 @@ jobs:
         run: |
           $zip = Get-ChildItem release\*.zip | Select-Object -First 1
           if (-not $zip) { throw "release.ps1 没产出 zip" }
+          $sum = Join-Path $zip.DirectoryName ($zip.BaseName + ".sha256.txt")
           $sha = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
           $ver = $env:TAG.TrimStart('v')
           $sizeKB = [math]::Round($zip.Length / 1KB, 1)
@@ -98,8 +100,28 @@ jobs:
           本地校验：certutil -hashfile $($zip.Name) SHA256
           "@
           $h = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; 'User-Agent' = 'miniclip-ci' }
+          $api = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
           $payload = @{ tag_name = $env:TAG; name = "MiniClip $ver"; body = $body; draft = $false; prerelease = $false } | ConvertTo-Json
-          $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases" -Headers $h -Body $payload
-          $up = $rel.upload_url.Split('{')[0] + "?name=" + [uri]::EscapeDataString($zip.Name)
-          Invoke-RestMethod -Method Post -Uri $up -Headers ($h + @{ 'Content-Type' = 'application/zip' }) -InFile $zip.FullName | Out-Null
+          try {
+              $rel = Invoke-RestMethod -Method Get -Uri "$api/releases/tags/$env:TAG" -Headers $h -ErrorAction Stop
+              Write-Host "[i] Release $env:TAG 已存在（id $($rel.id)），更新说明"
+              $rel = Invoke-RestMethod -Method Patch -Uri "$api/releases/$($rel.id)" -Headers $h -Body $payload
+          } catch {
+              $code = 0
+              if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+              if ($code -ne 404) { throw }
+              Write-Host "[i] 新建 Release $env:TAG"
+              $rel = Invoke-RestMethod -Method Post -Uri "$api/releases" -Headers $h -Body $payload
+          }
+          # 同名附件在重跑时会 422，先按名字删旧的再传，保证重跑结果一致
+          foreach ($f in @($zip.FullName, $sum)) {
+              if (-not (Test-Path $f)) { throw "缺少附件 $f" }
+              $n = Split-Path $f -Leaf
+              foreach ($a in @($rel.assets)) {
+                  if ($a.name -eq $n) { Invoke-RestMethod -Method Delete -Uri "$api/releases/assets/$($a.id)" -Headers $h | Out-Null }
+              }
+              $up = $rel.upload_url.Split('{')[0] + "?name=" + [uri]::EscapeDataString($n)
+              Invoke-RestMethod -Method Post -Uri $up -Headers ($h + @{ 'Content-Type' = 'application/octet-stream' }) -InFile $f | Out-Null
+              Write-Host "[OK] 已上传 $n"
+          }
           Write-Host "released: $($rel.html_url)"
