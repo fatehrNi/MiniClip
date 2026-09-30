@@ -1,0 +1,56 @@
+name: build
+
+# Windows runner 自带 .NET Framework 4.x 的 csc.exe，本项目不需要装任何东西即可构建
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 编译（系统自带 csc.exe）
+        shell: pwsh
+        run: |
+          ./build.ps1
+          if (-not (Test-Path ./MiniClip.exe)) { throw "没产出 MiniClip.exe" }
+          $fi = Get-Item ./MiniClip.exe
+          "大小 {0:N1} KB" -f ($fi.Length / 1KB)
+          $v = $fi.VersionInfo
+          "文件属性：{0} {1} / {2}" -f $v.ProductName, $v.FileVersion, $v.FileDescription
+
+      - name: 自检（不依赖真实剪贴板的项）
+        shell: pwsh
+        run: |
+          # MiniClip.exe 是 GUI 子系统程序，PowerShell 的 & 调用不会等待，也不一定能拿到输出，
+          # 所以统一用 Start-Process -Wait + 重定向，失败必须让 CI 红。
+          function Mc([string]$args_) {
+            $o = [System.IO.Path]::GetTempFileName()
+            $p = Start-Process -FilePath ./MiniClip.exe -ArgumentList $args_ -PassThru -Wait -NoNewWindow `
+                    -RedirectStandardOutput $o -RedirectStandardError "$o.err"
+            $t = [System.IO.File]::ReadAllText($o)
+            if ($p.ExitCode -ne 0) { throw "MiniClip $args_ 退出码 $($p.ExitCode)`n$t" }
+            Write-Host "--- $args_ ---"; Write-Host $t
+          }
+          Mc "--version"
+          Mc "--help"
+          Mc "--bench-store 2000 200"
+          Mc "--bench-load"
+          if (Test-Path "$env:LOCALAPPDATA\..\..\MiniClip\crash.log") { throw "存在 crash.log" }
+
+      - name: 打包发布物
+        shell: pwsh
+        run: |
+          ./release.ps1
+          Get-ChildItem release | Format-Table Name,Length
+
+      - name: 上传压缩包
+        uses: actions/upload-artifact@v4
+        with:
+          name: MiniClip-windows
+          path: release/*.zip

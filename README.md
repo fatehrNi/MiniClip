@@ -3,7 +3,10 @@
 每次复制都自动记下来，并带上"什么时候、从哪个程序、哪个窗口"这些信息。
 **单文件 70 KB，零安装、零依赖、不联网**；常驻空闲 CPU 实测 0 ms。
 
-> 仓库地址（开源前替换）：`<把你的仓库链接放这里>` · 许可证：MIT · 变更见 [CHANGELOG.md](CHANGELOG.md)
+![build](https://github.com/fatehrNi/miniclip/actions/workflows/build.yml/badge.svg)
+
+> 许可证：MIT · 变更见 [CHANGELOG.md](CHANGELOG.md) · 贡献与构建说明见 [CONTRIBUTING.md](CONTRIBUTING.md)
+> （上面徽章里的仓库名如果改了，同步改这一行）
 
 ---
 
