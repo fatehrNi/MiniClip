@@ -11,6 +11,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -54,3 +56,50 @@ jobs:
         with:
           name: MiniClip-windows
           path: release/*.zip
+
+  release:
+    # 打 v* 标签就自动发 GitHub Release：构建 zip、算 SHA256、上传附件。
+    # 用工作区自带的 GITHUB_TOKEN，不需要个人凭据，也不引入第三方 Action。
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 构建发布包
+        shell: pwsh
+        run: ./release.ps1
+
+      - name: 创建 Release 并上传 zip
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $zip = Get-ChildItem release\*.zip | Select-Object -First 1
+          if (-not $zip) { throw "release.ps1 没产出 zip" }
+          $sha = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
+          $ver = $env:TAG.TrimStart('v')
+          $sizeKB = [math]::Round($zip.Length / 1KB, 1)
+          $body = @"
+          ## MiniClip $ver
+
+          Windows 轻量剪贴板历史：单文件、零安装零依赖（只用系统自带的 csc.exe 构建）、不联网、数据放在程序同级 data 目录。
+
+          下载解压后双击 install.cmd（建快捷方式 + 开机自启 + 立即运行），或直接双击 MiniClip.exe。
+          唤出历史：Ctrl+Alt+V。
+
+          | 文件 | 大小 | SHA256 |
+          | --- | --- | --- |
+          | $($zip.Name) | $sizeKB KB | $sha |
+
+          本地校验：certutil -hashfile $($zip.Name) SHA256
+          "@
+          $h = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = "application/vnd.github+json"; 'User-Agent' = 'miniclip-ci' }
+          $payload = @{ tag_name = $env:TAG; name = "MiniClip $ver"; body = $body; draft = $false; prerelease = $false } | ConvertTo-Json
+          $rel = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases" -Headers $h -Body $payload
+          $up = $rel.upload_url.Split('{')[0] + "?name=" + [uri]::EscapeDataString($zip.Name)
+          Invoke-RestMethod -Method Post -Uri $up -Headers ($h + @{ 'Content-Type' = 'application/zip' }) -InFile $zip.FullName | Out-Null
+          Write-Host "released: $($rel.html_url)"
