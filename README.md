@@ -3,7 +3,7 @@
 每次复制都自动记下来，并带上"什么时候、从哪个程序、哪个窗口"这些信息。
 **单文件 70 KB，零安装、零依赖、不联网**；常驻空闲 CPU 实测 0 ms。
 
-![build](https://github.com/fatehrNi/miniclip/actions/workflows/build.yml/badge.svg)
+![build](https://github.com/fatehrNi/MiniClip/actions/workflows/build.yml/badge.svg)
 
 > 许可证：MIT · 变更见 [CHANGELOG.md](CHANGELOG.md) · 贡献与构建说明见 [CONTRIBUTING.md](CONTRIBUTING.md)
 > （上面徽章里的仓库名如果改了，同步改这一行）
