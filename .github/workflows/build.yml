@@ -110,8 +110,18 @@ jobs:
               $code = 0
               if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
               if ($code -ne 404) { throw }
-              Write-Host "[i] 新建 Release $env:TAG"
-              $rel = Invoke-RestMethod -Method Post -Uri "$api/releases" -Headers $h -Body $payload
+              # by-tag 查询看不到草稿：tag 被移动或删除过时，原 Release 会退回草稿态。
+              # 这时扫一遍列表按 tag 名找，优先已发布的那条，找不到才新建，避免重复建 Release。
+              $cands = @(Invoke-RestMethod -Method Get -Uri "$api/releases?per_page=100" -Headers $h) | Where-Object { $_.tag_name -eq $env:TAG }
+              $rel = $cands | Where-Object { -not $_.draft } | Select-Object -First 1
+              if (-not $rel) { $rel = $cands | Select-Object -First 1 }
+              if ($rel) {
+                  Write-Host "[i] Release $env:TAG 已存在（草稿，id $($rel.id)），更新并发布"
+                  $rel = Invoke-RestMethod -Method Patch -Uri "$api/releases/$($rel.id)" -Headers $h -Body $payload
+              } else {
+                  Write-Host "[i] 新建 Release $env:TAG"
+                  $rel = Invoke-RestMethod -Method Post -Uri "$api/releases" -Headers $h -Body $payload
+              }
           }
           # 同名附件在重跑时会 422，先按名字删旧的再传，保证重跑结果一致
           foreach ($f in @($zip.FullName, $sum)) {
